@@ -1,7 +1,9 @@
 import pandas as pd # type: ignore
 
+
 # Load both CSVs and xlsx 5019, 4602 ==9553
-sea_web_data = pd.read_excel('/home/abhishekyadav/stig_project/src/data/Seaweb data sample 18 09 25.xlsx')
+#sea_web_data = pd.read_excel('/home/abhishekyadav/stig_project/src/data/Seaweb data sample 18 09 25.xlsx')
+sea_web_data = pd.read_excel('/home/abhishekyadav/stig_project/src/data/Seaweb data sample 26 09 25.xlsx')
 
 sers_fleet_share_data = pd.read_csv('/home/abhishekyadav/stig_project/src/data/SERS_Fleet_sharepoint.csv')
 # sers_fleet_share_data=sers_fleet_share_data.rename(columns={'LR No': 'IMO No'})
@@ -85,13 +87,23 @@ client_ls['IMO No']=client_ls['IMO No'].astype(str)
 
 combined=pd.merge(combined, client_ls, on='IMO No', how='left')
 
-#################------------------------------------#####################
-def get_fee_column(row):
+#################-------------------Enrol type-----------------#####################
+def get_enrol_type(row):
+    # Step 1: Check if AB has a value
+    if pd.notnull(row['Status']) and row['Status'] != '':
+        return row['Status']
     
-    for col in ['Status', 'transfer', 'sers_sister']: 
-            return col
-    return row['Client lead / sister']  
-combined['Enrol type'] = combined.apply(get_fee_column, axis=1)
+    # Step 2: Check AC and AD for 'Y', left to right
+    for col in ['transfer', 'SERS sister']:
+        if row.get(col) == 'Y':
+            return col  
+    
+    # Step 3: Return value from AE
+    return row['Client lead / sister']
+
+# Apply to your DataFrame
+combined['Enrol type'] = combined.apply(get_enrol_type, axis=1)
+
 
 ######################### Enrol Fee ###############
 fee_mapping = {
@@ -104,19 +116,37 @@ fee_mapping = {
     'Ferry': 10300,
     'Container': 7700,
     'Tanker': 5750,
+    'Oil tanker':5750,
     'Bulk Carrier':	6400,
+    'Bulk carrier':100,
     'Ro/Ro Cargo': 7700,
+    'Roro cargo':7700,
     'vehicle carrier': 7700,
     'gas':7050,
     'General Cargo'	:7050,
     'OSV': 7050,
     'Yacht'	:9500,
     'Other'	:7050,
+    'Container ship':100
 }
-combined['Enrol Fee'] = combined['Enrol type'].map(fee_mapping).fillna(0)
 
+def get_enrol_fee(row):
+    enrol_type = row['Enrol type']
+    ship_value = row['Ship Type']  
 
+    # Step 1: Try enrol type
+    if enrol_type in fee_mapping:
+        return fee_mapping[enrol_type]
 
+    # Step 2: Try ship value if enrol type not found
+    if ship_value in fee_mapping:
+        return fee_mapping[ship_value]
+
+    # Step 3: Fallback to 0
+    return 0
+
+# Apply the logic to the DataFrame
+combined['Enrol Fee'] = combined.apply(get_enrol_fee, axis=1)
 #########################-----------------------------####################
 combined.columns= [col.replace('_x', '').replace('_y', '') for col in combined.columns]
 
@@ -129,5 +159,5 @@ select_col=['Technical Manager Name', 'Technical Manager Country of Domicile', '
               'ECO NOTATION FLAG', 'SSD', 'GLIMO', 'Contract Signed Date', 'Status' ,
               'transfer', 'sers_sister', 'Client lead / sister', 'Enrol type', 'Enrol Fee']
 final_data=combined[select_col]
-final_data.to_csv('stig_detail_table.csv', index=False)
+final_data.to_csv('stig_detail_table_26.csv', index=False)
 
