@@ -5,6 +5,8 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.max_colwidth', None)
 
 df = pd.read_csv('/home/abhishekyadav/stig_project/src/stig/stig_detail_table_26.csv')
+
+
 # Index(['Technical Manager Name', 'Technical Manager Country of Domicile',
 #        'Area', 'Client Name', 'Ship Name', 'Type detail', 'IMO No', 'Class1',
 #        'Class 2', 'GB Owner', 'GBO Country', 'LBP', 'GT', 'DWT', 'Ship Status',
@@ -25,7 +27,12 @@ expected_ship_type=['Bulk carrier',	'Container ship', 'Ferry',	'Gas',	'General c
 ] 
 ship_type_counts = df.groupby(['Technical Manager Name', 'Technical Manager Country of Domicile', 'Area', 'Ship Type']).size().unstack(fill_value=0)
 ship_type_counts = ship_type_counts.reindex(columns=expected_ship_type, fill_value=0)
+# fee_sum = df.groupby(['Technical Manager Name', 'Ship Type'])['Enrol Fee'].sum().reset_index(name='fee_sum')
 
+# # Filter for Ship Type 'bb'
+# fee_sum_bb = fee_sum[fee_sum['Ship Type'] == 'Bulk carrier']
+# print(fee_sum_bb)
+# exit()
 
 ship_type_counts.to_csv('ship_type_counts.csv', index=False)
 expected_class1 = ['AB', 'BV', 'CC', 'IR', 'KR', 'NK', 'OT', 'RI', 'VL', 'LR'] 
@@ -66,7 +73,6 @@ final_df['CSI LR']=final_df[['LR', 'csi']].min(axis=1)
 
 #--------------------Not CSI LR --------------#
 final_df['Not CSI LR'] = final_df['LR'] - final_df['CSI LR']
-
 
 #----------------------------end------------------------------#
 
