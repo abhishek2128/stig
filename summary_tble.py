@@ -76,10 +76,23 @@ final_df['Not CSI LR'] = final_df['LR'] - final_df['CSI LR']
 
 #----------------------------end------------------------------#
 
-final_df['enrol_lr_missing']=1000 # fill count
 
+# Step 1: Filter where Class1 == 'LR'
+df_lr = df[df['Class1'] == 'LR']
 
+# Step 2: Further filter where Status != 'Contract sent'
+filtered_df_ad = df_lr[df_lr['Status'] != 'Contract sent']
 
+# Step 3: Find common rows between df_lr and filtered_df_ad (common rows are filtered_df_ad itself)
+common_rows = pd.merge(df_lr, filtered_df_ad, how='inner')
+
+grouped_fees = common_rows.groupby(group_cols)['Enrol Fee'].sum()
+grouped_df = grouped_fees.reset_index()
+# Step 6: Rename the column before merging
+grouped_df.rename(columns={'Enrol Fee': 'enrol_lr_missing'}, inplace=True)
+# Merge into existing final_df (left join to preserve all rows in final_df)
+final_df = final_df.merge(grouped_df, on=group_cols, how='left')
+final_df['enrol_lr_missing'] = final_df['enrol_lr_missing'].fillna(0).astype(int)
 
 
 #--------------------------------------------------------------------#
@@ -93,6 +106,7 @@ merged_df_cob = pd.merge(final_df, df[['Technical Manager Name', 'Technical Mana
 
 grouped = merged_df_cob[(final_df['Not CSI LR'].notna()) & (merged_df_cob['COB'] == 'Japan')] \
             .groupby(group_cols).size().reset_index(name='jcob_ship_missing')
+
 final_df = final_df.merge(grouped, on=group_cols, how='left')
 final_df['jcob_ship_missing'] = final_df['jcob_ship_missing'].fillna(0).astype(int)
 
@@ -134,7 +148,11 @@ final_df = pd.merge(final_df, grouped_no, on=group_cols, how='left')
 final_df['no_lr_ship'] = final_df['no_lr_ship'].fillna(0).astype(int)
 
 
-final_df['enrol_lr_ship']=1000 # fill count
+enrol_lr_ship=lr_not_csi.groupby(group_cols)['Enrol Fee'].sum().reset_index(name='enrol_lr_ship')
+final_df = pd.merge(final_df, enrol_lr_ship, on=group_cols, how='left')
+final_df['enrol_lr_ship'] = final_df['enrol_lr_ship'].fillna(0).astype(int)
+
+ 
 final_df['cpe_lr_ship'] = (final_df['enrol_lr_ship'] / final_df['no_lr_ship'].replace(0, pd.NA)).fillna(0).round(2)
 
 
@@ -167,9 +185,17 @@ final_df = pd.merge(final_df, grouped_no, on=group_cols, how='left')
 final_df['no_lr_client'] = final_df['no_lr_client'].fillna(0).astype(int)
 
 
-final_df['enrol_lr_client']=1000 # fill count
+#--------------------------------------enroll_lr_client ---------------#
+enrol_lr_client=filtered_df.groupby(group_cols)['Enrol Fee'].sum().reset_index(name='enrol_lr_client')
+final_df = pd.merge(final_df, enrol_lr_client, on=group_cols, how='left')
+final_df['enrol_lr_client'] = final_df['enrol_lr_client'].fillna(0).astype(int)
+
+
+
 final_df['cpe_lr_client'] = (final_df['enrol_lr_client'] / final_df['no_lr_client'].replace(0, pd.NA)).fillna(0).round(2)
 
+
+#------------------------------- New SERS and LR client ---------------------------#
 
 tech_mgrs_with_csi = set(df[df['Status'] != 'Contract sent'][group_cols[0]].unique())
 
