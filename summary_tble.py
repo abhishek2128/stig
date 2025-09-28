@@ -6,63 +6,48 @@ pd.set_option('display.max_colwidth', None)
 
 df = pd.read_csv('/home/abhishekyadav/stig_project/src/stig/stig_detail_table_26.csv')
 
-
-# Index(['Technical Manager Name', 'Technical Manager Country of Domicile',
-#        'Area', 'Client Name', 'Ship Name', 'Type detail', 'IMO No', 'Class1',
-#        'Class 2', 'GB Owner', 'GBO Country', 'LBP', 'GT', 'DWT', 'Ship Status',
-#        'DOB', 'COB', 'Ship Builder', 'Yard No', 'Built to LR Class',
-#        'SERS DESCRP.NOTE FLAG', 'ECO NOTATION FLAG', 'SSD', 'GLIMO',
-#        'Contract Signed Date', 'Status', 'transfer', 'sers_sister',
-#        'Client lead / sister', 'Enrol type', 'Enrol Fee'],
-#       dtype='object')
  # Clean and preprocess the data
 for col in ['Technical Manager Name', 'Type detail', 'Class1', 'Enrol Fee', 'Ship Type']:
     if col in df.columns:
         df[col] = df[col]
 
 # Pivot and aggregate data
-expected_ship_type=['Bulk carrier',	'Container ship', 'Ferry',	'Gas',	'General cargo',
-                    	'Oil tanker',  'OSV',	'Other type',	
-                    'Passenger'	,'Roro cargo',	'Vehicle carrier'	,'Yacht'
-] 
+expected_ship_type=[
+    'Bulk carrier',	'Container ship', 'Ferry',	'Gas',	'General cargo',
+    'Oil tanker',  'OSV', 'Other type',	'Passenger', 'Roro cargo',	'Vehicle carrier',' Yacht'
+    ] 
+
 ship_type_counts = df.groupby(['Technical Manager Name', 'Technical Manager Country of Domicile', 'Area', 'Ship Type']).size().unstack(fill_value=0)
 ship_type_counts = ship_type_counts.reindex(columns=expected_ship_type, fill_value=0)
-# fee_sum = df.groupby(['Technical Manager Name', 'Ship Type'])['Enrol Fee'].sum().reset_index(name='fee_sum')
 
-# # Filter for Ship Type 'bb'
-# fee_sum_bb = fee_sum[fee_sum['Ship Type'] == 'Bulk carrier']
-# print(fee_sum_bb)
-# exit()
-
-ship_type_counts.to_csv('ship_type_counts.csv', index=False)
 expected_class1 = ['AB', 'BV', 'CC', 'IR', 'KR', 'NK', 'OT', 'RI', 'VL', 'LR'] 
 Class1_counts = df.groupby(['Technical Manager Name',  'Technical Manager Country of Domicile' , 'Area', 'Class1']).size().unstack(fill_value=0)
 Class1_counts = Class1_counts.reindex(columns=expected_class1, fill_value=0)
-Class1_counts.to_csv('Class1_counts.csv', index=False)
+
+
 # Combine the pivot tables and add additional columns
 
 combined = ship_type_counts.join(Class1_counts, how='outer', lsuffix='_ship', rsuffix='_class').fillna(0)
 
 combined['fleet_total'] = ship_type_counts.sum(axis=1)
-combined.to_csv('Class1_counts.csv', index=False)
-
 
 
 group_cols=['Technical Manager Name',  'Technical Manager Country of Domicile', 'Area']
 
-#------------------- csi value-------------------------#
+#-------------------Get  CSI Value -------------------------#
 in_csi_df = df[df['Status'] != 'Contract sent']
 csi_counts = in_csi_df.groupby(group_cols).size().reset_index(name='csi')
 final_df = combined.reset_index()
 final_df = final_df.merge(csi_counts, on=group_cols, how='left')
 final_df['csi'] = final_df['csi'].fillna(0).astype(int)
+#----------------------------------------------------------#
 
-
-#------------------cse value----------------------#
+#------------------ Get CSE value----------------------#
 in_cse_df = df[df['Status'] == 'Contract sent']
 cse_counts = in_cse_df.groupby(group_cols).size().reset_index(name='cse')
 final_df = final_df.merge(cse_counts, on=group_cols, how='left')
 final_df['cse'] = final_df['cse'].fillna(0).astype(int)
+#---------------------------------------------------------#
 
 #------------------------------SERS client: LR ships missing---------------------------------#
 
@@ -76,7 +61,7 @@ final_df['Not CSI LR'] = final_df['LR'] - final_df['CSI LR']
 
 #----------------------------end------------------------------#
 
-
+#---------------------- Get enrol_lr_missing Value --------------#
 # Step 1: Filter where Class1 == 'LR'
 df_lr = df[df['Class1'] == 'LR']
 
@@ -93,18 +78,22 @@ grouped_df.rename(columns={'Enrol Fee': 'enrol_lr_missing'}, inplace=True)
 # Merge into existing final_df (left join to preserve all rows in final_df)
 final_df = final_df.merge(grouped_df, on=group_cols, how='left')
 final_df['enrol_lr_missing'] = final_df['enrol_lr_missing'].fillna(0).astype(int)
+#-------------------------------------end -----------------------------------#
 
-
-#--------------------------------------------------------------------#
+#----------------------------------CPE ----------------------------------#
 final_df['cpe_lr_missing'] = (final_df['enrol_lr_missing'] / final_df['Not CSI LR'].replace(0, pd.NA)).fillna(0).round(2)
-
+#----------------------------------- End ------------------------------#
 
 #---------------------jcob ---------------------#
 
 merged_df_cob = pd.merge(final_df, df[['Technical Manager Name', 'Technical Manager Country of Domicile', 'Area', 'COB']],
                      on=group_cols, how='left')
+#is_common = merged_df_cob['IMO No'].isin(common_rows['IMO No'])
+is_common = merged_df_cob[group_cols].apply(tuple, axis=1).isin(
+    common_rows[group_cols].apply(tuple, axis=1)
+)
 
-grouped = merged_df_cob[(final_df['Not CSI LR'].notna()) & (merged_df_cob['COB'] == 'Japan')] \
+grouped = merged_df_cob[is_common & (merged_df_cob['COB'] == 'Japan')] \
             .groupby(group_cols).size().reset_index(name='jcob_ship_missing')
 
 final_df = final_df.merge(grouped, on=group_cols, how='left')
@@ -150,10 +139,12 @@ final_df['no_lr_ship'] = final_df['no_lr_ship'].fillna(0).astype(int)
 
 enrol_lr_ship=lr_not_csi.groupby(group_cols)['Enrol Fee'].sum().reset_index(name='enrol_lr_ship')
 final_df = pd.merge(final_df, enrol_lr_ship, on=group_cols, how='left')
+
 final_df['enrol_lr_ship'] = final_df['enrol_lr_ship'].fillna(0).astype(int)
 
  
 final_df['cpe_lr_ship'] = (final_df['enrol_lr_ship'] / final_df['no_lr_ship'].replace(0, pd.NA)).fillna(0).round(2)
+
 
 
 lr_ships_japan = lr_not_csi[lr_not_csi['COB'] == 'Japan']
